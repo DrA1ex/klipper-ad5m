@@ -3,6 +3,11 @@
 # Copyright (C) 2019 Alec Plumb <alec@etherwalker.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Backported Klipper commit b8c936f: ignore empty rendered button templates
+#   instead of queuing empty requests on the G-code mutex.
+# - Python-only patch; no MCU firmware or host binary rebuild is required.
 import logging
 
 class GCodeButton:
@@ -38,7 +43,10 @@ class GCodeButton:
         if not state:
             template = self.release_template
         try:
-            self.gcode.run_script(template.render())
+            commands = template.render()
+            if not commands.strip():
+                return
+            self.gcode.run_script(commands)
         except:
             logging.exception("Script running error")
 
