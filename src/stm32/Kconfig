@@ -249,6 +249,14 @@ config STM32F103GD_DISABLE_SWD
         and PA14 pins from being available. Selecting this option
         disables SWD at startup and thus makes these pins available.
 
+config FLASHFORGE_AD5M_EBOARD
+    bool "FlashForge Adventurer 5M eboard"
+    depends on LOW_LEVEL_OPTIONS && MACH_N32G455 && STM32_FLASH_START_10000
+    default n
+    help
+        Enable the PB7 heater power gate used by the FlashForge
+        Adventurer 5M eboard. The gate is disabled on MCU shutdown.
+
 config STM32_DFU_ROM_ADDRESS
     hex
     default 0 if !USB
