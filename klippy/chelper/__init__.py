@@ -1,6 +1,7 @@
 # Wrapper around C helper code
 #
 # Copyright (C) 2016-2021  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import os, logging
@@ -263,7 +264,7 @@ def logging_callback(msg):
 def get_ffi():
     global FFI_main, FFI_lib, pyhelper_logging_callback
     if FFI_lib is None:
-        srcdir = os.path.dirname(os.path.realpath(__file__))
+        srcdir = os.path.dirname(os.path.abspath(__file__))
         srcfiles = get_abs_files(srcdir, SOURCE_FILES)
         ofiles = get_abs_files(srcdir, OTHER_FILES)
         destlib = get_abs_files(srcdir, [DEST_LIB])[0]
