@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import os, logging, io
+import re, sys
 
 VALID_GCODE_EXTS = ['gcode', 'g', 'gco']
 
@@ -24,6 +25,7 @@ class VirtualSD:
         self.must_pause_work = self.cmd_from_sd = False
         self.next_file_position = 0
         self.work_timer = None
+        self.estimate_print_time = None
         # Error handling
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
         self.on_error_gcode = gcode_macro.load_template(
@@ -95,6 +97,7 @@ class VirtualSD:
             'is_active': self.is_active(),
             'file_position': self.file_position,
             'file_size': self.file_size,
+            'estimate_print_time': self.estimate_print_time,
         }
     def file_path(self):
         if self.current_file:
@@ -194,6 +197,7 @@ class VirtualSD:
             f = io.open(fname, 'r', newline='')
             f.seek(0, os.SEEK_END)
             fsize = f.tell()
+            self.estimate_print_time = self.parse_estimated_time(f, fsize)
             f.seek(0)
         except:
             logging.exception("virtual_sdcard file open")
@@ -229,6 +233,34 @@ class VirtualSD:
         self.next_file_position = pos
     def is_cmd_from_sd(self):
         return self.cmd_from_sd
+    def parse_estimated_time(self, file, size):
+        READ_SIZE = 128 * 1024 # 128 KiB
+        file.seek(max(0, size - READ_SIZE), os.SEEK_SET)
+        footer_data = file.read(READ_SIZE)
+
+        time_match = re.search(
+            r';\s*(?:OrcaSlicer\s+)?estimated\s+'
+            r'(?:printing|extrusion)\s+time[^\r\n]*',
+            footer_data, re.IGNORECASE)
+
+        if not time_match:
+            return None
+
+        total_time = 0
+        time_group = time_match.group()
+        time_patterns = [(r"(\d+)d", 24*60*60), (r"(\d+)h", 60*60),
+                         (r"(\d+)m", 60), (r"(\d+)s", 1)]
+
+        try:
+            for pattern, multiplier in time_patterns:
+                t = re.search(pattern, time_group)
+                if t:
+                    total_time += int(t.group(1)) * multiplier
+        except Exception:
+            return None
+
+        return round(total_time, 2)
+
     # Background work timer
     def work_handler(self, eventtime):
         logging.info("Starting SD card print (position %d)", self.file_position)
