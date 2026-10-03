@@ -302,6 +302,7 @@ class PrinterConfig:
         # Setup get_status()
         self._build_status(config)
     def log_config(self, config):
+        if not config.getsection("klippy").getboolean("log_config", True): return
         lines = ["===== Config file =====",
                  self._build_config_string(config),
                  "======================="]
