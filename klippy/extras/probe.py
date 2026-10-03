@@ -205,11 +205,11 @@ class PrinterProbe:
         sample_retract_dist = gcmd.get_float("SAMPLE_RETRACT_DIST",
                                              self.sample_retract_dist, above=0.)
         toolhead = self.printer.lookup_object('toolhead')
-        pos = toolhead.get_position()
+        start_pos = toolhead.get_position()
         gcmd.respond_info("PROBE_ACCURACY at X:%.3f Y:%.3f Z:%.3f"
                           " (samples=%d retract=%.3f"
                           " speed=%.1f lift_speed=%.1f)\n"
-                          % (pos[0], pos[1], pos[2],
+                          % (start_pos[0], start_pos[1], start_pos[2],
                              sample_count, sample_retract_dist,
                              speed, lift_speed))
         # Probe bed sample_count times
@@ -220,7 +220,8 @@ class PrinterProbe:
             pos = self._probe(speed)
             positions.append(pos)
             # Retract
-            liftpos = [None, None, pos[2] + sample_retract_dist]
+            lift_z = toolhead.get_position()[2] + sample_retract_dist
+            liftpos = [start_pos[0], start_pos[1], lift_z]
             self._move(liftpos, lift_speed)
         self.multi_probe_end()
         # Calculate maximum, minimum and average values
