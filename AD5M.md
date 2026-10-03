@@ -23,7 +23,7 @@ v0.11.0                      upstream Klipper release, e02b7256
 - **Base.** Upstream Klipper `v0.11.0` (`e02b725602067a2cd098a62be9a4bb10fc74a9bd`).
   The stock FlashForge host Klipper is from that release. Of the 175 files
   under `klippy/` in the stock firmware, 169 are byte-identical to `v0.11.0`.
-- **Stock changes.** The first commit after `v0.11.0` (`182e96ab8394201923e095ede450f2468f293d16`) contains the
+- **Stock changes.** The first commit after `v0.11.0` (`c6e78dffa3d16a25710942a379b019debbacd5af`) contains the
   changes FlashForge made to four of the files that differ (see below).
 - **Forge-X commits.** Everything after that. Each commit has a message that
   says what it changes and why, and names the upstream commit it is based on,
@@ -32,7 +32,7 @@ v0.11.0                      upstream Klipper release, e02b7256
 Compare views:
 
 - everything Forge-X changes compared with the stock firmware:
-  [`182e96ab83...main`](../../compare/182e96ab8394201923e095ede450f2468f293d16...main)
+  [`c6e78dffa3...main`](../../compare/c6e78dffa3d16a25710942a379b019debbacd5af...main)
 - everything compared with upstream Klipper:
   [`e02b7256...main`](../../compare/e02b725602067a2cd098a62be9a4bb10fc74a9bd...main)
 
