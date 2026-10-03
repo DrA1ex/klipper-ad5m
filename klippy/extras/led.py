@@ -1,6 +1,12 @@
 # Support for PWM driven LEDs
 #
+# Changes:
+# - Added invert parameter
+#
+# Copyright (C) 2025, Alexander K <https://github.com/drA1ex>
+#
 # Copyright (C) 2019-2022  Kevin O'Connor <kevin@koconnor.net>
+#
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging, ast
@@ -191,6 +197,7 @@ class PrinterPWMLED:
         cycle_time = config.getfloat('cycle_time', 0.010, above=0.,
                                      maxval=MAX_SCHEDULE_TIME)
         hardware_pwm = config.getboolean('hardware_pwm', False)
+        self.invert = config.getboolean('invert', False)
         self.pins = []
         for i, name in enumerate(("red", "green", "blue", "white")):
             pin_name = config.get(name + '_pin', None)
@@ -219,7 +226,9 @@ class PrinterPWMLED:
         color = led_state[0]
         for idx, mcu_pin in self.pins:
             if self.prev_color[idx] != color[idx]:
-                mcu_pin.set_pwm(print_time, color[idx])
+                color_value = color[idx]
+                if self.invert: color_value = 1. - color_value
+                mcu_pin.set_pwm(print_time, color_value)
                 self.last_print_time = print_time
         self.prev_color = color
     def get_status(self, eventtime=None):
