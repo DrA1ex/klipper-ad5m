@@ -1,8 +1,24 @@
 # Interface to Klipper micro-controller code
 #
 # Copyright (C) 2016-2021  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Backported Klipper commits dab39c02 and 1ea9f3aa (included in v0.13):
+#   stagger MCU reports and use a 0.3 timeout reporting interval to improve
+#   multi-MCU homing communication margin with the existing v0.11 protocol.
+# - Backported Klipper commit 8e6e467: schedule trsync timeout setup at the
+#   endstop start clock so synchronization is configured before homing starts.
+#   Keep this scheduling for both setup commands when reports are staggered.
+# - Log homing setup, final MCU stop reasons, and endstop trigger timestamps;
+#   periodic TRSYNC reports are not logged.
+# - Adapted Klipper commit 2b4c55f to the legacy direct PWM API: track the
+#   current software-PWM state and expose cycle-aligned scheduling for servos.
+# - Read optional TRSYNC timeout tuning from mod_data/variables.cfg without
+#   modifying this repository-backed file at runtime.
+# - Python-only patch; no MCU firmware or host binary rebuild is required.
 import sys, os, zlib, logging, math
 import serialhdl, msgproto, pins, chelper, clocksync
 
@@ -348,6 +364,7 @@ class MCU_pwm:
         self._start_value = self._shutdown_value = float(self._invert)
         self._is_static = False
         self._last_clock = self._last_cycle_ticks = 0
+        self._last_value = 0.
         self._pwm_max = 0.
         self._set_cmd = self._set_cycle_ticks = None
     def get_mcu(self):
@@ -365,6 +382,7 @@ class MCU_pwm:
             shutdown_value = 1. - shutdown_value
         self._start_value = max(0., min(1., start_value))
         self._shutdown_value = max(0., min(1., shutdown_value))
+        self._last_value = self._start_value
         self._is_static = is_static
     def _build_config(self):
         if self._max_duration and self._start_value != self._shutdown_value:
@@ -429,6 +447,19 @@ class MCU_pwm:
             "queue_digital_out oid=%c clock=%u on_ticks=%u", cq=cmd_queue)
         self._set_cycle_ticks = self._mcu.lookup_command(
             "set_digital_out_pwm_cycle oid=%c cycle_ticks=%u", cq=cmd_queue)
+    def next_aligned_print_time(self, print_time, allow_early=0.):
+        # Hardware PWM and fully on/off software PWM do not need alignment.
+        if self._hardware_pwm or self._last_value in (0., 1.):
+            return print_time
+        # Schedule software-PWM changes on a cycle boundary so an update does
+        # not extend or truncate the pulse currently being generated.
+        req_ptime = print_time - min(allow_early, 0.5 * self._cycle_time)
+        cycle_ticks = self._mcu.seconds_to_clock(self._cycle_time)
+        req_clock = self._mcu.print_time_to_clock(req_ptime)
+        last_clock = self._last_clock
+        pulses = (req_clock - last_clock + cycle_ticks - 1) // cycle_ticks
+        next_clock = last_clock + pulses * cycle_ticks
+        return self._mcu.clock_to_print_time(next_clock)
     def set_pwm(self, print_time, value, cycle_time=None):
         clock = self._mcu.print_time_to_clock(print_time)
         minclock = self._last_clock
@@ -439,6 +470,7 @@ class MCU_pwm:
             v = int(max(0., min(1., value)) * self._pwm_max + 0.5)
             self._set_cmd.send([self._oid, clock, v],
                                minclock=minclock, reqclock=clock)
+            self._last_value = value
             return
         # Soft pwm update
         if cycle_time is None:
@@ -454,6 +486,7 @@ class MCU_pwm:
         on_ticks = int(max(0., min(1., value)) * float(cycle_ticks) + 0.5)
         self._set_cmd.send([self._oid, clock, on_ticks],
                            minclock=minclock, reqclock=clock)
+        self._last_value = value
 
 class MCU_adc:
     def __init__(self, mcu, pin_params):

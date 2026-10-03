@@ -3,6 +3,13 @@
 # Copyright (C) 2017-2020  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Adapted Klipper commit 2b4c55f to the legacy direct PWM API: align servo
+#   updates to software-PWM cycle boundaries to avoid distorted pulses.
+# - Preserve compatibility with PWM pin wrappers that do not implement cycle
+#   alignment by falling back to the legacy scheduling behavior.
+# - Python-only patch; no MCU firmware or host binary rebuild is required.
 
 SERVO_SIGNAL_PERIOD = 0.020
 PIN_MIN_TIME = 0.100
@@ -45,6 +52,9 @@ class PrinterServo:
         if value == self.last_value:
             return
         print_time = max(print_time, self.last_value_time + PIN_MIN_TIME)
+        align_time = getattr(self.mcu_servo, 'next_aligned_print_time', None)
+        if align_time is not None:
+            print_time = align_time(print_time)
         self.mcu_servo.set_pwm(print_time, value)
         self.last_value = value
         self.last_value_time = print_time
