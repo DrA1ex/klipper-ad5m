@@ -106,18 +106,47 @@ class Move:
         self.cruise_t = cruise_d / cruise_v
         self.decel_t = decel_d / ((end_v + cruise_v) * 0.5)
 
-LOOKAHEAD_FLUSH_TIME = 0.5
+DEFAULT_LOOKAHEAD_FLUSH_TIME = 0.5
+TUNED_LOOKAHEAD_FLUSH_TIME = 0.150
+
+def _load_lookahead_flush_time(
+        variables_path="/opt/config/mod_data/variables.cfg"):
+    in_variables = False
+
+    try:
+        with open(variables_path, 'r') as variables:
+            for raw_line in variables:
+                line = raw_line.strip()
+                if not line or line.startswith(('#', ';')):
+                    continue
+                if line.startswith('[') and line.endswith(']'):
+                    in_variables = (
+                        line[1:-1].strip().lower() == 'variables')
+                    continue
+                if not in_variables or '=' not in line:
+                    continue
+
+                key, value = line.split('=', 1)
+                if key.strip().lower() == 'tune_klipper':
+                    if value.strip() == '1':
+                        return TUNED_LOOKAHEAD_FLUSH_TIME
+                    return DEFAULT_LOOKAHEAD_FLUSH_TIME
+    except (IOError, OSError):
+        pass
+
+    return DEFAULT_LOOKAHEAD_FLUSH_TIME
 
 # Class to track a list of pending move requests and to facilitate
 # "look-ahead" across moves to reduce acceleration between moves.
 class MoveQueue:
-    def __init__(self, toolhead):
+    def __init__(self, toolhead, lookahead_flush_time):
         self.toolhead = toolhead
+        self.lookahead_flush_time = lookahead_flush_time
         self.queue = []
-        self.junction_flush = LOOKAHEAD_FLUSH_TIME
+        self.junction_flush = lookahead_flush_time
     def reset(self):
         del self.queue[:]
-        self.junction_flush = LOOKAHEAD_FLUSH_TIME
+        self.junction_flush = self.lookahead_flush_time
     def set_flush_time(self, flush_time):
         self.junction_flush = flush_time
     def get_last(self):
@@ -125,7 +154,7 @@ class MoveQueue:
             return self.queue[-1]
         return None
     def flush(self, lazy=False):
-        self.junction_flush = LOOKAHEAD_FLUSH_TIME
+        self.junction_flush = self.lookahead_flush_time
         update_flush_count = lazy
         queue = self.queue
         flush_count = len(queue)
@@ -206,7 +235,7 @@ class ToolHead:
         self.can_pause = True
         if self.mcu.is_fileoutput():
             self.can_pause = False
-        self.move_queue = MoveQueue(self)
+        self.move_queue = MoveQueue(self, _load_lookahead_flush_time())
         self.commanded_pos = [0., 0., 0., 0.]
         self.printer.register_event_handler("klippy:shutdown",
                                             self._handle_shutdown)
