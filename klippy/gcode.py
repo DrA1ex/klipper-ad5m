@@ -134,7 +134,7 @@ class GCodeDispatch:
                 "gcode command %s already registered" % (cmd,))
         if not self.is_traditional_gcode(cmd):
             if (cmd.upper() != cmd or not cmd.replace('_', 'A').isalnum()
-                or cmd[0].isdigit() or cmd[1:2].isdigit()):
+                    or cmd[0].isdigit() or cmd[1:2].isdigit()):
                 raise self.printer.config_error(
                     "Can't register '%s' as it is an invalid name" % (cmd,))
             origfunc = func
@@ -185,8 +185,8 @@ class GCodeDispatch:
     def _handle_ready(self):
         self.is_printer_ready = True
         self.gcode_handlers = self.ready_gcode_handlers
-        self._build_status_commands()
         self._respond_state("Ready")
+        self._build_status_commands()
     # Parse input into commands
     args_r = re.compile('([A-Z_]+|[A-Z*/])')
     def _process_commands(self, commands, need_ack=True):
