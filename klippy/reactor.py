@@ -54,6 +54,8 @@ class ReactorFileHandler:
         self.fd = fd
         self.read_callback = read_callback
         self.write_callback = write_callback
+    def fileno(self):
+        return self.fd
 
 class ReactorGreenlet(greenlet.greenlet):
     def __init__(self, run):
