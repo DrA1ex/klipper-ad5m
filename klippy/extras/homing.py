@@ -79,6 +79,11 @@ class HomingMove:
                                    for s in es.get_steppers() ]
         # Start endstop checking
         print_time = self.toolhead.get_last_move_time()
+        logging.info("Homing move start: endstops=%s print_time=%.6f"
+                     " start=%s target=%s speed=%.6f probe=%s triggered=%s",
+                     [name for es, name in self.endstops], print_time,
+                     self.toolhead.get_position(), movepos, speed,
+                     probe_pos, triggered)
         endstop_triggers = []
         for mcu_endstop, name in self.endstops:
             rest_time = self._calc_endstop_rate(mcu_endstop, movepos, speed)
@@ -110,6 +115,14 @@ class HomingMove:
         for sp in self.stepper_positions:
             tt = trigger_times.get(sp.endstop_name, move_end_print_time)
             sp.note_home_end(tt)
+            logging.info("Homing stepper: endstop=%s stepper=%s"
+                         " trigger_time=%.6f valid_trigger=%s start=%d"
+                         " trigger=%d halt=%d travel_steps=%d over_steps=%d"
+                         " step_dist=%.9f",
+                         sp.endstop_name, sp.stepper_name, tt,
+                         sp.endstop_name in trigger_times, sp.start_pos,
+                         sp.trig_pos, sp.halt_pos, sp.trig_pos - sp.start_pos,
+                         sp.halt_pos - sp.trig_pos, sp.stepper.get_step_dist())
         if probe_pos:
             halt_steps = {sp.stepper_name: sp.halt_pos - sp.start_pos
                           for sp in self.stepper_positions}
@@ -134,6 +147,10 @@ class HomingMove:
         except self.printer.command_error as e:
             if error is None:
                 error = str(e)
+        logging.info("Homing move end: endstops=%s end_time=%.6f"
+                     " trigger_pos=%s halt_pos=%s error=%s",
+                     [name for es, name in self.endstops], move_end_print_time,
+                     trigpos, haltpos, error)
         if error is not None:
             raise self.printer.command_error(error)
         return trigpos
@@ -181,6 +198,9 @@ class Homing:
         # Perform first home
         endstops = [es for rail in rails for es in rail.get_endstops()]
         hi = rails[0].get_homing_info()
+        logging.info("Homing rails first pass: axes=%s force_pos=%s"
+                     " home_pos=%s retract_dist=%.6f",
+                     homing_axes, startpos, homepos, hi.retract_dist)
         hmove = HomingMove(self.printer, endstops)
         hmove.homing_move(homepos, hi.speed)
         # Perform second home
@@ -197,6 +217,10 @@ class Homing:
             # Home again
             startpos = [rp - ad * retract_r
                         for rp, ad in zip(retractpos, axes_d)]
+            logging.info("Homing rails second pass: axes=%s retract_pos=%s"
+                         " force_pos=%s home_pos=%s speed=%.6f",
+                         homing_axes, retractpos, startpos, homepos,
+                         hi.second_homing_speed)
             self.toolhead.set_position(startpos)
             hmove = HomingMove(self.printer, endstops)
             hmove.homing_move(homepos, hi.second_homing_speed)
@@ -221,6 +245,8 @@ class Homing:
             for axis in homing_axes:
                 homepos[axis] = newpos[axis]
             self.toolhead.set_position(homepos)
+        logging.info("Homing rails end: axes=%s position=%s adjustments=%s",
+                     homing_axes, self.toolhead.get_position(), self.adjust_pos)
 
 class PrinterHoming:
     def __init__(self, config):
@@ -264,14 +290,18 @@ class PrinterHoming:
         homing_state = Homing(self.printer)
         homing_state.set_axes(axes)
         kin = self.printer.lookup_object('toolhead').get_kinematics()
+        logging.info("Homing G28 start: axes=%s", axes)
         try:
             kin.home(homing_state)
         except self.printer.command_error:
+            logging.info("Homing G28 failed: axes=%s", axes)
             if self.printer.is_shutdown():
                 raise self.printer.command_error(
                     "Homing failed due to printer shutdown")
             self.printer.lookup_object('stepper_enable').motor_off()
             raise
+        logging.info("Homing G28 end: axes=%s position=%s", axes,
+                     homing_state.toolhead.get_position())
 
 def load_config(config):
     return PrinterHoming(config)
