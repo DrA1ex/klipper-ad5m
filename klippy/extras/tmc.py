@@ -222,6 +222,7 @@ class TMCCommandHelper:
         self.mcu_phase_offset = None
         self.stepper = None
         self.stepper_enable = self.printer.load_object(config, "stepper_enable")
+        self.enable_mutex = self.printer.get_reactor().mutex()
         self.printer.register_event_handler("stepper:sync_mcu_position",
                                             self._handle_sync_mcu_pos)
         self.printer.register_event_handler("stepper:set_dir_inverted",
@@ -356,11 +357,13 @@ class TMCCommandHelper:
         # Note pulse duration and step_both_edge optimizations available
         self.stepper.setup_default_pulse_duration(.000000100, True)
     def _handle_stepper_enable(self, print_time, is_enable):
-        if is_enable:
-            cb = (lambda ev: self._do_enable(print_time))
-        else:
-            cb = (lambda ev: self._do_disable(print_time))
-        self.printer.get_reactor().register_callback(cb)
+        def enable_disable_cb(eventtime):
+            with self.enable_mutex:
+                if is_enable:
+                    self._do_enable(print_time)
+                else:
+                    self._do_disable(print_time)
+        self.printer.get_reactor().register_callback(enable_disable_cb)
     def _handle_connect(self):
         # Check if using step on both edges optimization
         pulse_duration, step_both_edge = self.stepper.get_pulse_duration()
