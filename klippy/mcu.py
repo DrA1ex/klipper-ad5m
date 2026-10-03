@@ -127,7 +127,36 @@ class MCU_trsync:
             s.note_homing_end()
         return params['trigger_reason']
 
-TRSYNC_TIMEOUT = 0.025
+def _load_trsync_timeout(
+        variables_path="/opt/config/mod_data/variables.cfg"):
+    default_timeout = 0.025
+    in_variables = False
+
+    try:
+        with open(variables_path, 'r') as variables:
+            for raw_line in variables:
+                line = raw_line.strip()
+                if not line or line.startswith(('#', ';')):
+                    continue
+                if line.startswith('[') and line.endswith(']'):
+                    in_variables = (
+                        line[1:-1].strip().lower() == 'variables')
+                    continue
+                if not in_variables or '=' not in line:
+                    continue
+
+                key, value = line.split('=', 1)
+                if key.strip().lower() == 'tune_klipper':
+                    if value.strip() == '1':
+                        return 0.05
+                    return default_timeout
+    except (IOError, OSError):
+        pass
+
+    return default_timeout
+
+
+TRSYNC_TIMEOUT = _load_trsync_timeout()
 TRSYNC_SINGLE_MCU_TIMEOUT = 0.250
 
 class MCU_endstop:
