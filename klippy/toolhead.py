@@ -253,7 +253,7 @@ class ToolHead:
         self.buffer_time_low = config.getfloat(
             'buffer_time_low', 1.000, above=0.)
         self.buffer_time_high = config.getfloat(
-            'buffer_time_high', 2.000, above=self.buffer_time_low)
+            'buffer_time_high', 1.500, above=self.buffer_time_low)
         self.buffer_time_start = config.getfloat(
             'buffer_time_start', 0.250, above=0.)
         self.move_flush_time = config.getfloat(
