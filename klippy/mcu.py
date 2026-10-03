@@ -114,6 +114,11 @@ class MCU_trsync:
             self._stepper_stop_cmd.send([s.get_oid(), self._oid])
         self._trsync_set_timeout_cmd.send([self._oid, expire_clock],
                                           reqclock=clock)
+        logging.info("Homing trsync start: mcu=%s oid=%d clock=%d"
+                     " report_clock=%d report_ticks=%d expire_clock=%d"
+                     " min_extend_ticks=%d reqclock=%d",
+                     self._mcu.get_name(), self._oid, clock, report_clock,
+                     report_ticks, expire_clock, min_extend_ticks, clock)
     def set_home_end_time(self, home_end_time):
         self._home_end_clock = self._mcu.print_time_to_clock(home_end_time)
     def stop(self):
@@ -233,6 +238,13 @@ class MCU_endstop:
             [self._oid, clock, self._mcu.seconds_to_clock(sample_time),
              sample_count, rest_ticks, triggered ^ self._invert,
              etrsync.get_oid(), etrsync.REASON_ENDSTOP_HIT], reqclock=clock)
+        logging.info("Homing endstop start: mcu=%s oid=%d pin=%s"
+                     " print_time=%.6f clock=%d rest_ticks=%d"
+                     " sample_time=%.6f sample_count=%d triggered=%s"
+                     " timeout=%.6f",
+                     self._mcu.get_name(), self._oid, self._pin, print_time,
+                     clock, rest_ticks, sample_time, sample_count, triggered,
+                     expire_timeout)
         return self._trigger_completion
     def home_wait(self, home_end_time):
         etrsync = self._trsyncs[0]
@@ -244,6 +256,11 @@ class MCU_endstop:
         ffi_main, ffi_lib = chelper.get_ffi()
         ffi_lib.trdispatch_stop(self._trdispatch)
         res = [trsync.stop() for trsync in self._trsyncs]
+        logging.info("Homing endstop stop: mcu=%s oid=%d end_time=%.6f"
+                     " reasons=%s (1=hit 2=timeout 3=host 4=past_end)",
+                     self._mcu.get_name(), self._oid, home_end_time,
+                     [(ts.get_mcu().get_name(), ts.get_oid(), reason)
+                      for ts, reason in zip(self._trsyncs, res)])
         if any([r == etrsync.REASON_COMMS_TIMEOUT for r in res]):
             return -1.
         if res[0] != etrsync.REASON_ENDSTOP_HIT:
@@ -252,7 +269,14 @@ class MCU_endstop:
             return home_end_time
         params = self._query_cmd.send([self._oid])
         next_clock = self._mcu.clock32_to_clock64(params['next_clock'])
-        return self._mcu.clock_to_print_time(next_clock - self._rest_ticks)
+        trigger_time = self._mcu.clock_to_print_time(
+            next_clock - self._rest_ticks)
+        logging.info("Homing endstop trigger: mcu=%s oid=%d"
+                     " next_clock=%d next_clock64=%d rest_ticks=%d"
+                     " trigger_time=%.6f",
+                     self._mcu.get_name(), self._oid, params['next_clock'],
+                     next_clock, self._rest_ticks, trigger_time)
+        return trigger_time
     def query_endstop(self, print_time):
         clock = self._mcu.print_time_to_clock(print_time)
         if self._mcu.is_fileoutput():
