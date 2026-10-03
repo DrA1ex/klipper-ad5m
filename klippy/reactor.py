@@ -108,8 +108,6 @@ class SelectReactor:
         self._pipe_fds = None
         self._async_queue = queue.Queue()
         # File descriptors
-        self._dummy_fd_hdl = ReactorFileHandler(-1, (lambda e: None),
-                                                (lambda e: None))
         self._fds = {}
         self._read_fds = []
         self._write_fds = []
@@ -265,14 +263,20 @@ class SelectReactor:
             self._write_fds.append(fd)
     def _check_fds(self, eventtime, hdls):
         g_dispatch = self._g_dispatch
-        for fd, event in hdls:
-            hdl = self._fds.get(fd, self._dummy_fd_hdl)
+        # Bind the batch to current registrations before any callback can
+        # close another descriptor and reuse its number for a new connection.
+        hdls = [(self._fds.get(fd), event) for fd, event in hdls]
+        for hdl, event in hdls:
+            if hdl is None or self._fds.get(hdl.fd) is not hdl:
+                continue
+
             if event & self._READ:
                 hdl.read_callback(eventtime)
                 if g_dispatch is not self._g_dispatch:
                     self._end_greenlet(g_dispatch)
                     return self.monotonic()
-            if event & self._WRITE:
+
+            if event & self._WRITE and self._fds.get(hdl.fd) is hdl:
                 hdl.write_callback(eventtime)
                 if g_dispatch is not self._g_dispatch:
                     self._end_greenlet(g_dispatch)
