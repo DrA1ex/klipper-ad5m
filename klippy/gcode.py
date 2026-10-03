@@ -89,6 +89,11 @@ class GCodeCommand:
 class GCodeDispatch:
     error = CommandError
     Coord = Coord
+    default_immediate_commands = frozenset((
+        "M108", "TONE", "ALARM", "BEEP",
+    ))
+    command_name_r = re.compile(
+        r'^([a-zA-Z_][a-zA-Z0-9_]*|[a-zA-Z][0-9]+)(?:\s|$)')
     def __init__(self, printer):
         self.printer = printer
         self.is_fileinput = not not printer.get_start_args().get("debuginput")
@@ -104,10 +109,10 @@ class GCodeDispatch:
         self.ready_gcode_handlers = {}
         self.mux_commands = {}
         self.gcode_help = {}
-        self.status_commands = {}
+        self.immediate_commands = set(self.default_immediate_commands)
         # Register commands needed before config file is loaded
-        handlers = ['M110', 'M112', 'M115',
-                    'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP']
+        handlers = ['M108', 'M110', 'M112', 'M115',
+                    'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP', 'NOOP']
         for cmd in handlers:
             func = getattr(self, 'cmd_' + cmd)
             desc = getattr(self, 'cmd_' + cmd + '_help', None)
@@ -161,6 +166,13 @@ class GCodeDispatch:
                 "mux command %s %s %s already registered (%s)" % (
                     cmd, key, value, prev_values))
         prev_values[value] = func
+    def register_immediate_command(self, cmd):
+        """Allow a registered command to run ahead of the G-code mutex."""
+        if cmd not in self.ready_gcode_handlers:
+            raise self.printer.config_error(
+                "gcode command %s must be registered before it is immediate"
+                % (cmd,))
+        self.immediate_commands.add(cmd)
     def get_command_help(self):
         return dict(self.gcode_help)
     def get_status(self, eventtime):
@@ -233,8 +245,30 @@ class GCodeDispatch:
     def run_script_from_command(self, script):
         self._process_commands(script.split('\n'), need_ack=False)
     def run_script(self, script):
+        # Special parser for immediate commands
+        lines = []
+        immediate = []
+        for line in script.split('\n'):
+            match = self.command_name_r.match(line.strip())
+            immediate_commands = getattr(
+                self, "immediate_commands", self.default_immediate_commands)
+            if (match is not None
+                    and match.group(1).upper() in immediate_commands):
+                immediate.append(line)
+            else:
+                lines.append(line)
+        for line in immediate:
+            self.run_script_from_command(line)
+
+        # An immediate-only script has already completed.  Do not wait for the
+        # active dispatcher mutex: M108 exists specifically to interrupt a
+        # yielding _WAIT_TEMPERATURE macro holding that mutex.
+        if not any(line.strip() for line in lines):
+            return
+
         with self.mutex:
-            self._process_commands(script.split('\n'), need_ack=False)
+            self._process_commands(lines, need_ack=False)
+
     def get_mutex(self):
         return self.mutex
     def create_gcode_command(self, command, commandline, params):
@@ -322,6 +356,19 @@ class GCodeDispatch:
                              % (key_param, key))
         values[key_param](gcmd)
     # Low-level G-Code commands that are needed before the config file is loaded
+    cmd_M108_help = "Skip Mod's heating commands"
+    def cmd_M108(self, gcmd):
+        wait_cmd = self.printer.lookup_object("gcode_macro _WAIT_TEMPERATURE")
+        if not wait_cmd: raise self.error("_WAIT_TEMPERATURE doesn't exist!")
+        if "cancel" not in wait_cmd.variables: raise self.error("_WAIT_TEMPERATURE doesn't contain the 'cancel' variable!")
+        if "active" not in wait_cmd.variables: raise self.error("_WAIT_TEMPERATURE doesn't contain the 'active' variable!")
+        if not wait_cmd.variables["active"]: return self.respond_raw("There is no active _WAIT_TEMPERATURE process!")
+
+        # Set the "cancel" variable to True, which _WAIT_TEMPERATURE will later read
+        wait_cmd.variables = dict(wait_cmd.variables)
+        wait_cmd.variables["cancel"] = True
+        self.respond_raw("Set cancellation flag for _WAIT_TEMPERATURE!")
+
     def cmd_M110(self, gcmd):
         # Set Current Line Number
         pass
@@ -372,6 +419,8 @@ class GCodeDispatch:
             if cmd in self.gcode_help:
                 cmdhelp.append("%-10s: %s" % (cmd, self.gcode_help[cmd]))
         gcmd.respond_info("\n".join(cmdhelp), log=False)
+    def cmd_NOOP(self, gcmd):
+        pass # Just do nothing
 
 # Support reading gcode from a pseudo-tty interface
 class GCodeIO:
