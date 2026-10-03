@@ -421,10 +421,22 @@ class ToolHead:
     def _flush_handler(self, eventtime):
         try:
             print_time = self.print_time
+            est_print_time = self.mcu.estimated_print_time(eventtime)
             buffer_time = print_time - self.mcu.estimated_print_time(eventtime)
             if buffer_time > self.buffer_time_low:
                 # Running normally - reschedule check
                 return eventtime + buffer_time - self.buffer_time_low
+
+            # DEBUG: detect low-buffer forced lookahead flush
+            logging.warning(
+                "LOW_BUFFER_FLUSH: eventtime=%.6f print_time=%.6f "
+                "est_print_time=%.6f buffer_time=%.6f low=%.6f "
+                "queue=%d state=%s",
+                eventtime, print_time, est_print_time,
+                buffer_time, self.buffer_time_low,
+                len(self.move_queue.queue),
+                self.special_queuing_state)
+            
             # Under ran low buffer mark - flush lookahead queue
             self.flush_step_generation()
             if print_time != self.print_time:
