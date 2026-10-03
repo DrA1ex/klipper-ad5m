@@ -62,7 +62,11 @@ class VirtualSD:
         if check_subdirs:
             flist = []
             for root, dirs, files in os.walk(
-                    self.sdcard_dirname, followlinks=True):
+                    self.sdcard_dirname, followlinks=True, topdown=True):
+                # Ignore hidden files and directories
+                files = [f for f in files if not f[0] == '.']
+                dirs[:] = [d for d in dirs if not d[0] == '.']
+
                 for name in files:
                     ext = name[name.rfind('.')+1:]
                     if ext not in VALID_GCODE_EXTS:
@@ -71,6 +75,7 @@ class VirtualSD:
                     r_path = full_path[len(self.sdcard_dirname) + 1:]
                     size = os.path.getsize(full_path)
                     flist.append((r_path, size))
+
             return sorted(flist, key=lambda f: f[0].lower())
         else:
             dname = self.sdcard_dirname
