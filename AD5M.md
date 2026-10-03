@@ -24,7 +24,7 @@ v0.11.0                      upstream Klipper release, e02b7256
   The stock FlashForge host Klipper is from that release. Of the 175 files
   under `klippy/` in the stock firmware, 169 are byte-identical to `v0.11.0`.
 - **Stock changes.** The first commit after `v0.11.0` (`182e96ab8394201923e095ede450f2468f293d16`) contains the
-  changes FlashForge made to four of the six files that differ.
+  changes FlashForge made to four of the files that differ (see below).
 - **Forge-X commits.** Everything after that. Each commit has a message that
   says what it changes and why, and names the upstream commit it is based on,
   if there is one.
@@ -76,23 +76,34 @@ What is exact, and can be checked:
 The original FlashForge sources are not public, so the stock commit is a
 reconstruction that matches those hashes.
 
-## Open points
+## Notes on the stock files
 
-- `klippy/extras/virtual_sdcard.py`. The stock file list has the MD5
-  `025354a1c2b767f849e9262a37a786fd`, which does not match any upstream
-  version. A copy of the file from a printer is identical to upstream
-  `v0.11.0`. The stock change to this file, if there is one, is not
-  reconstructed. Until that is resolved, the stock commit leaves the file as
-  upstream.
-- `klippy/chelper/c_helper.so` is a binary built from the C sources in
-  `klippy/chelper/`. The stock library is built from the unmodified `v0.11.0`
-  sources. The Forge-X library is built from the sources in this tree, which
-  differ from `v0.11.0` in `kin_extruder.c` (dynamic pressure advance,
-  upstream commit `c84d78f3`).
-- A few Forge-X changes have no recorded motivation. Their commit messages say
-  so (`toolhead: lower the default buffer_time_high`, `tmc: run the driver
-  checks again when enabling`, `gcode: change how commands from the G-code pipe
-  are processed`).
+Six files under `klippy/` in the stock firmware differ from upstream
+`v0.11.0` according to the stock file list:
+
+- `toolhead.py`, `extras/tmc.py`, `queuelogger.py` and `chelper/__init__.py`
+  are reproduced in the stock commit, with the same MD5 sums as the list.
+- `chelper/c_helper.so` is a binary. The stock library is built from the
+  unmodified `v0.11.0` C sources, so there is nothing to change in the tree.
+  The prebuilt Forge-X library is not stored in this repository. The C sources
+  in `klippy/chelper/` are the sources it is built from; they differ from
+  `v0.11.0` only in `kin_extruder.c` (dynamic pressure advance, upstream
+  commit `c84d78f3`).
+- `extras/virtual_sdcard.py`: a copy of the file from a printer with the stock
+  firmware is identical to upstream `v0.11.0` (MD5
+  `63aebc1f0008ce3ddb6dc51c4b6e33aa`), so the stock commit does not change it.
+  The stock file list has a different MD5 for it,
+  `025354a1c2b767f849e9262a37a786fd`, which matches no upstream version; the
+  reason is not known.
+
+## Changes without a recorded reason
+
+The reason for two Forge-X changes was not recorded. They are already in the
+first commit of the Forge-X repository, so their history cannot be traced
+further. Their commit messages say what they do:
+
+- `tmc: start the driver error checks again when enabling a stepper`
+- `gcode: change how commands from the G-code pipe are processed`
 
 ## How the files map to Forge-X
 
