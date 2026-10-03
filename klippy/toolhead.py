@@ -396,7 +396,10 @@ class ToolHead:
             self.special_queuing_state = "Priming"
             self.need_check_stall = -1.
             self.reactor.update_timer(self.flush_timer, eventtime + 0.100)
-        # Check if there are lots of queued moves and stall if so
+        # Check if there are lots of queued moves and stall if so.
+        # Semantic backport of upstream commit 50cb362: periodically yield
+        # while buffering so dense G-code cannot starve other reactor tasks.
+        did_pause = False
         while 1:
             est_print_time = self.mcu.estimated_print_time(eventtime)
             buffer_time = self.print_time - est_print_time
@@ -406,11 +409,15 @@ class ToolHead:
             if not self.can_pause:
                 self.need_check_stall = self.reactor.NEVER
                 return
-            eventtime = self.reactor.pause(eventtime + min(1., stall_time))
+            stall_time = max(.005, min(1., stall_time))
+            eventtime = self.reactor.pause(eventtime + stall_time)
+            did_pause = True
         if not self.special_queuing_state:
-            # In main state - defer stall checking until needed
-            self.need_check_stall = (est_print_time + self.buffer_time_high
-                                     + 0.100)
+            # In main state - recheck after the next print-time advance.
+            self.need_check_stall = self.print_time
+        if not did_pause:
+            # May be falling behind - yield to avoid starving other tasks.
+            self.reactor.pause(self.reactor.NOW)
     def _flush_handler(self, eventtime):
         try:
             print_time = self.print_time
