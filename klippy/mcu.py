@@ -348,6 +348,7 @@ class MCU_pwm:
         self._start_value = self._shutdown_value = float(self._invert)
         self._is_static = False
         self._last_clock = self._last_cycle_ticks = 0
+        self._last_value = 0.
         self._pwm_max = 0.
         self._set_cmd = self._set_cycle_ticks = None
     def get_mcu(self):
@@ -365,6 +366,7 @@ class MCU_pwm:
             shutdown_value = 1. - shutdown_value
         self._start_value = max(0., min(1., start_value))
         self._shutdown_value = max(0., min(1., shutdown_value))
+        self._last_value = self._start_value
         self._is_static = is_static
     def _build_config(self):
         if self._max_duration and self._start_value != self._shutdown_value:
@@ -429,6 +431,19 @@ class MCU_pwm:
             "queue_digital_out oid=%c clock=%u on_ticks=%u", cq=cmd_queue)
         self._set_cycle_ticks = self._mcu.lookup_command(
             "set_digital_out_pwm_cycle oid=%c cycle_ticks=%u", cq=cmd_queue)
+    def next_aligned_print_time(self, print_time, allow_early=0.):
+        # Hardware PWM and fully on/off software PWM do not need alignment.
+        if self._hardware_pwm or self._last_value in (0., 1.):
+            return print_time
+        # Schedule software-PWM changes on a cycle boundary so an update does
+        # not extend or truncate the pulse currently being generated.
+        req_ptime = print_time - min(allow_early, 0.5 * self._cycle_time)
+        cycle_ticks = self._mcu.seconds_to_clock(self._cycle_time)
+        req_clock = self._mcu.print_time_to_clock(req_ptime)
+        last_clock = self._last_clock
+        pulses = (req_clock - last_clock + cycle_ticks - 1) // cycle_ticks
+        next_clock = last_clock + pulses * cycle_ticks
+        return self._mcu.clock_to_print_time(next_clock)
     def set_pwm(self, print_time, value, cycle_time=None):
         clock = self._mcu.print_time_to_clock(print_time)
         minclock = self._last_clock
@@ -439,6 +454,7 @@ class MCU_pwm:
             v = int(max(0., min(1., value)) * self._pwm_max + 0.5)
             self._set_cmd.send([self._oid, clock, v],
                                minclock=minclock, reqclock=clock)
+            self._last_value = value
             return
         # Soft pwm update
         if cycle_time is None:
@@ -454,6 +470,7 @@ class MCU_pwm:
         on_ticks = int(max(0., min(1., value)) * float(cycle_ticks) + 0.5)
         self._set_cmd.send([self._oid, clock, on_ticks],
                            minclock=minclock, reqclock=clock)
+        self._last_value = value
 
 class MCU_adc:
     def __init__(self, mcu, pin_params):

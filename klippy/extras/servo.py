@@ -45,6 +45,9 @@ class PrinterServo:
         if value == self.last_value:
             return
         print_time = max(print_time, self.last_value_time + PIN_MIN_TIME)
+        align_time = getattr(self.mcu_servo, 'next_aligned_print_time', None)
+        if align_time is not None:
+            print_time = align_time(print_time)
         self.mcu_servo.set_pwm(print_time, value)
         self.last_value = value
         self.last_value_time = print_time
