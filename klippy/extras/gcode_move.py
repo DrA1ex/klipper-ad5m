@@ -27,6 +27,7 @@ class GCodeMove:
             'G1', 'G20', 'G21',
             'M82', 'M83', 'G90', 'G91', 'G92', 'M220', 'M221',
             'SET_GCODE_OFFSET', 'SAVE_GCODE_STATE', 'RESTORE_GCODE_STATE',
+            'RESET_GCODE_ORIGIN',
         ]
         for cmd in handlers:
             func = getattr(self, 'cmd_' + cmd)
@@ -72,8 +73,15 @@ class GCodeMove:
         self.extrude_factor = 1.
         self.base_position[3] = self.last_position[3]
     def _handle_home_rails_end(self, homing_state, rails):
+        self._reset_gcode_origin(homing_state.get_axes())
+        logging.info("Homing gcode coordinates: axes=%s position=%s"
+                     " base=%s origin=%s absolute=%s",
+                     homing_state.get_axes(), self.last_position[:3],
+                     self.base_position[:3], self.homing_position[:3],
+                     self.absolute_coord)
+    def _reset_gcode_origin(self, axes):
         self.reset_last_position()
-        for axis in homing_state.get_axes():
+        for axis in axes:
             self.base_position[axis] = self.homing_position[axis]
     def set_move_transform(self, transform, force=False):
         if self.move_transform is not None and not force:
@@ -207,6 +215,16 @@ class GCodeMove:
             for pos, delta in enumerate(move_delta):
                 self.last_position[pos] += delta
             self.move_with_transform(self.last_position, speed)
+    cmd_RESET_GCODE_ORIGIN_help = (
+        "Clear temporary G92 shifts on selected XYZ axes without moving")
+    def cmd_RESET_GCODE_ORIGIN(self, gcmd):
+        axes = gcmd.get('AXES', 'XYZ').strip().upper()
+        if (not axes or any(axis not in 'XYZ' for axis in axes)
+            or len(set(axes)) != len(axes)):
+            raise gcmd.error("AXES must select X, Y, Z without duplicates")
+        self._reset_gcode_origin(['XYZ'.index(axis) for axis in axes])
+        logging.info("Reset gcode origin: axes=%s base=%s origin=%s",
+                     axes, self.base_position[:3], self.homing_position[:3])
     cmd_SAVE_GCODE_STATE_help = "Save G-Code coordinate state"
     def cmd_SAVE_GCODE_STATE(self, gcmd):
         state_name = gcmd.get('NAME', 'default')
