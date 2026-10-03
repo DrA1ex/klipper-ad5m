@@ -225,6 +225,14 @@ class GCodeMove:
         state = self.saved_states.get(state_name)
         if state is None:
             raise gcmd.error("Unknown g-code state: %s" % (state_name,))
+        if (self.base_position[:3] != state['base_position'][:3]
+            or self.homing_position[:3] != state['homing_position'][:3]):
+            logging.info("Gcode state restore coordinates: name=%s"
+                         " base=%s restored_base=%s origin=%s"
+                         " restored_origin=%s",
+                         state_name, self.base_position[:3],
+                         state['base_position'][:3], self.homing_position[:3],
+                         state['homing_position'][:3])
         # Restore state
         self.absolute_coord = state['absolute_coord']
         self.absolute_extrude = state['absolute_extrude']
