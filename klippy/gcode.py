@@ -1,5 +1,10 @@
 # Parse gcode commands
 #
+# Changes:
+# - Fix exception handleing repeatative error print 
+#
+# Copyright (C) 2025-2026, Alexander K <https://github.com/drA1ex>
+#
 # Copyright (C) 2016-2021  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
@@ -487,7 +492,7 @@ class GCodeIO:
                 self.gcode.request_restart('exit')
             pending_commands.append("")
         # Handle case where multiple commands pending
-        if self.is_processing_data or len(pending_commands) > 1:
+        if self.is_processing_data or len(pending_commands) >= 1:
             if len(pending_commands) < 20:
                 # Check for M112 out-of-order
                 for line in lines:
@@ -504,7 +509,7 @@ class GCodeIO:
         while pending_commands:
             self.pending_commands = []
             with self.gcode_mutex:
-                self.gcode._process_commands(pending_commands)
+                self.gcode._process_commands(pending_commands,  need_ack=False)
             pending_commands = self.pending_commands
         self.is_processing_data = False
         if self.fd_handle is None:
