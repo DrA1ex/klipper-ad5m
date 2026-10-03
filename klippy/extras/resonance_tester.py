@@ -269,6 +269,10 @@ class ResonanceTester:
         "Simular to TEST_RESONANCES but suggest input shaper config")
     def cmd_SHAPER_CALIBRATE(self, gcmd):
         # Parse parameters
+
+        scv = self.printer.lookup_object("toolhead").square_corner_velocity
+        gcmd.respond_info(f"Calibration will be performed for square_corner_velocity = '{scv}'")
+
         axis = gcmd.get("AXIS", None)
         if not axis:
             calibrate_axes = [TestAxis('x'), TestAxis('y')]
@@ -297,7 +301,7 @@ class ResonanceTester:
                     % (axis_name,))
             calibration_data[axis].normalize_to_frequencies()
             best_shaper, all_shapers = helper.find_best_shaper(
-                    calibration_data[axis], max_smoothing, gcmd.respond_info)
+                    calibration_data[axis], max_smoothing, gcmd.respond_info, scv=scv)
             gcmd.respond_info(
                     "Recommended shaper_type_%s = %s, shaper_freq_%s = %.1f Hz"
                     % (axis_name, best_shaper.name,
