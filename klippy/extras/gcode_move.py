@@ -1,8 +1,16 @@
 # G-Code G1 movement commands (and associated coordinate manipulation)
 #
 # Copyright (C) 2016-2021  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Expose base_position in status for coordinate diagnostics.
+# - Log the coordinate base after homing and XYZ base/origin changes during
+#   RESTORE_GCODE_STATE; retain the stock coordinate restoration behavior.
+# - Add RESET_GCODE_ORIGIN as an extra homing safeguard: clear temporary G92
+#   shifts using Klipper's homing origin while preserving configured offsets.
 import logging
 
 class GCodeMove:

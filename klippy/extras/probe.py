@@ -3,6 +3,11 @@
 # Copyright (C) 2017-2021  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Backported Klipper commit a353efa: return to the starting XY position
+#   after each PROBE_ACCURACY attempt instead of retracting only in Z.
+# - Python-only patch; no MCU firmware or host binary rebuild is required.
 import logging
 import pins
 from . import manual_probe

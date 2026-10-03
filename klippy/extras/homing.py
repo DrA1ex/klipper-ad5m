@@ -1,8 +1,15 @@
 # Helper code for implementing homing operations
 #
 # Copyright (C) 2016-2021  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Keep the stock Klipper v0.11 homing calculations and error handling.
+# - Log each homing/probing move, start/trigger/halt step positions, retract
+#   and second-pass setup, and final toolhead coordinates for diagnostics.
+# - Log G28 outcomes without changing homing policy or adding retries.
 import logging, math
 
 HOMING_START_DELAY = 0.001

@@ -3,6 +3,13 @@
 # Copyright (C) 2016-2020  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Backported Klipper commit 01f089e: scale the minimum PWM change threshold
+#   with max_power, allowing heaters configured below 0.05 power to start.
+# - Added an internal, runtime-only cold-extrusion override for guided service
+#   operations. It is deliberately not exposed as a G-code command.
+# - Python-only patch; no MCU firmware or host binary rebuild is required.
 import os, logging, threading
 
 

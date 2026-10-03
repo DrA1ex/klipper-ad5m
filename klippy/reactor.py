@@ -1,8 +1,22 @@
 # File descriptor and timer event helper
 #
 # Copyright (C) 2016-2020  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Adapt Klipper commit bb88985: share fd dispatch across select/poll/epoll
+#   and skip ready events whose descriptors have already been unregistered.
+# - Snapshot registrations for each ready batch and recheck before writing,
+#   so closing or reusing a descriptor cannot dispatch an obsolete event.
+# - Include prerequisite SelectReactor spelling fixes from upstream commits
+#   136283bd and 0d5b96a6, and the EPollReactor registration/wakeup fixes
+#   from bb88985. Keep the legacy timer, greenlet, and handle.fileno() APIs.
+# Sources:
+# https://github.com/Klipper3d/klipper/commit/bb88985b8d48fa7505fee116eec1c4902361f95d
+# https://github.com/Klipper3d/klipper/commit/136283bd144530f53e96604957d11d8d1b5fe1da
+# https://github.com/Klipper3d/klipper/commit/0d5b96a6013570c0ff2519a3c03efdd25055ab36
 import os, gc, select, math, time, logging, queue
 import greenlet
 import chelper, util

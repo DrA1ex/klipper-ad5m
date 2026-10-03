@@ -1,8 +1,24 @@
 # Interface to Klipper micro-controller code
 #
 # Copyright (C) 2016-2021  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Backported Klipper commits dab39c02 and 1ea9f3aa (included in v0.13):
+#   stagger MCU reports and use a 0.3 timeout reporting interval to improve
+#   multi-MCU homing communication margin with the existing v0.11 protocol.
+# - Backported Klipper commit 8e6e467: schedule trsync timeout setup at the
+#   endstop start clock so synchronization is configured before homing starts.
+#   Keep this scheduling for both setup commands when reports are staggered.
+# - Log homing setup, final MCU stop reasons, and endstop trigger timestamps;
+#   periodic TRSYNC reports are not logged.
+# - Adapted Klipper commit 2b4c55f to the legacy direct PWM API: track the
+#   current software-PWM state and expose cycle-aligned scheduling for servos.
+# - Read optional TRSYNC timeout tuning from mod_data/variables.cfg without
+#   modifying this repository-backed file at runtime.
+# - Python-only patch; no MCU firmware or host binary rebuild is required.
 import sys, os, zlib, logging, math
 import serialhdl, msgproto, pins, chelper, clocksync
 

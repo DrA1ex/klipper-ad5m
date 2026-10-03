@@ -1,5 +1,10 @@
 # Support generic temperature sensors
 #
+# Changes:
+# - Added gcode code to execute if value out of range
+#
+# Copyright (C) 2025, Alexander K <https://github.com/drA1ex>
+#
 # Copyright (C) 2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.

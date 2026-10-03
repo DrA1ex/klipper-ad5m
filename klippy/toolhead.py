@@ -1,8 +1,17 @@
 # Code for coordinating events on the printer toolhead
 #
 # Copyright (C) 2016-2021  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Backported Klipper commit 50cb362: yield periodically while buffering so
+#   dense G-code cannot starve other reactor tasks.
+# - Read optional lookahead tuning from mod_data/variables.cfg without
+#   modifying this repository-backed file at runtime.
+# - Python-only patch; no MCU firmware or host binary rebuild is required.
+
 import math, logging, importlib
 import mcu, chelper, kinematics.extruder
 

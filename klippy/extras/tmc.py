@@ -3,6 +3,13 @@
 # Copyright (C) 2018-2020  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Backported Klipper commit 8dd798e: fix the stepper:set_dir_inverted event
+#   name so TMC phase tracking is refreshed after direction inversion.
+# - Adapted Klipper commit 8ea7be5: serialize asynchronous TMC enable and
+#   disable processing with a reactor mutex to prevent state races.
+# - Python-only patch; no MCU firmware or host binary rebuild is required.
 import logging, collections
 import stepper
 

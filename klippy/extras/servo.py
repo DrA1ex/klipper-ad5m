@@ -3,6 +3,13 @@
 # Copyright (C) 2017-2020  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Adapted Klipper commit 2b4c55f to the legacy direct PWM API: align servo
+#   updates to software-PWM cycle boundaries to avoid distorted pulses.
+# - Preserve compatibility with PWM pin wrappers that do not implement cycle
+#   alignment by falling back to the legacy scheduling behavior.
+# - Python-only patch; no MCU firmware or host binary rebuild is required.
 
 SERVO_SIGNAL_PERIOD = 0.020
 PIN_MIN_TIME = 0.100
