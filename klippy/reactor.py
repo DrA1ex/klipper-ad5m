@@ -1,8 +1,22 @@
 # File descriptor and timer event helper
 #
 # Copyright (C) 2016-2020  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Adapt Klipper commit bb88985: share fd dispatch across select/poll/epoll
+#   and skip ready events whose descriptors have already been unregistered.
+# - Snapshot registrations for each ready batch and recheck before writing,
+#   so closing or reusing a descriptor cannot dispatch an obsolete event.
+# - Include prerequisite SelectReactor spelling fixes from upstream commits
+#   136283bd and 0d5b96a6, and the EPollReactor registration/wakeup fixes
+#   from bb88985. Keep the legacy timer, greenlet, and handle.fileno() APIs.
+# Sources:
+# https://github.com/Klipper3d/klipper/commit/bb88985b8d48fa7505fee116eec1c4902361f95d
+# https://github.com/Klipper3d/klipper/commit/136283bd144530f53e96604957d11d8d1b5fe1da
+# https://github.com/Klipper3d/klipper/commit/0d5b96a6013570c0ff2519a3c03efdd25055ab36
 import os, gc, select, math, time, logging, queue
 import greenlet
 import chelper, util
@@ -108,8 +122,6 @@ class SelectReactor:
         self._pipe_fds = None
         self._async_queue = queue.Queue()
         # File descriptors
-        self._dummy_fd_hdl = ReactorFileHandler(-1, (lambda e: None),
-                                                (lambda e: None))
         self._fds = {}
         self._read_fds = []
         self._write_fds = []
@@ -265,14 +277,20 @@ class SelectReactor:
             self._write_fds.append(fd)
     def _check_fds(self, eventtime, hdls):
         g_dispatch = self._g_dispatch
-        for fd, event in hdls:
-            hdl = self._fds.get(fd, self._dummy_fd_hdl)
+        # Bind the batch to current registrations before any callback can
+        # close another descriptor and reuse its number for a new connection.
+        hdls = [(self._fds.get(fd), event) for fd, event in hdls]
+        for hdl, event in hdls:
+            if hdl is None or self._fds.get(hdl.fd) is not hdl:
+                continue
+
             if event & self._READ:
                 hdl.read_callback(eventtime)
                 if g_dispatch is not self._g_dispatch:
                     self._end_greenlet(g_dispatch)
                     return self.monotonic()
-            if event & self._WRITE:
+
+            if event & self._WRITE and self._fds.get(hdl.fd) is hdl:
                 hdl.write_callback(eventtime)
                 if g_dispatch is not self._g_dispatch:
                     self._end_greenlet(g_dispatch)
