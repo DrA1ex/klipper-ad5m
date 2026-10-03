@@ -304,7 +304,10 @@ class VirtualSD:
             # Dispatch command
             self.cmd_from_sd = True
             line = lines.pop()
-            next_file_position = self.file_position + len(line.encode()) + 1
+            if sys.version_info.major >= 3:
+                next_file_position = self.file_position + len(line.encode()) + 1
+            else:
+                next_file_position = self.file_position + len(line) + 1
             self.next_file_position = next_file_position
             try:
                 self.gcode.run_script(line)
