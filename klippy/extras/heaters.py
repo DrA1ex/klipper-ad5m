@@ -14,6 +14,7 @@ KELVIN_TO_CELSIUS = -273.15
 MAX_HEAT_TIME = 5.0
 AMBIENT_TEMP = 25.
 PID_PARAM_BASE = 255.
+MIN_PWM_CHANGE_RATIO = 0.05
 
 class Heater:
     def __init__(self, config, sensor):
@@ -34,6 +35,7 @@ class Heater:
                          is not None)
         self.can_extrude = self.min_extrude_temp <= 0. or is_fileoutput
         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
+        self.min_pwm_change = self.max_power * MIN_PWM_CHANGE_RATIO
         self.smooth_time = config.getfloat('smooth_time', 1., above=0.)
         self.inv_smooth_time = 1. / self.smooth_time
         self.lock = threading.Lock()
@@ -65,7 +67,7 @@ class Heater:
         if self.target_temp <= 0.:
             value = 0.
         if ((read_time < self.next_pwm_time or not self.last_pwm_value)
-            and abs(value - self.last_pwm_value) < 0.05):
+            and abs(value - self.last_pwm_value) < self.min_pwm_change):
             # No significant change in value - can suppress update
             return
         pwm_time = read_time + self.pwm_delay
