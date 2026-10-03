@@ -1,8 +1,17 @@
 # Code for coordinating events on the printer toolhead
 #
 # Copyright (C) 2016-2021  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Changes:
+# - Backported Klipper commit 50cb362: yield periodically while buffering so
+#   dense G-code cannot starve other reactor tasks.
+# - Read optional lookahead tuning from mod_data/variables.cfg without
+#   modifying this repository-backed file at runtime.
+# - Python-only patch; no MCU firmware or host binary rebuild is required.
+
 import math, logging, importlib
 import mcu, chelper, kinematics.extruder
 
@@ -421,10 +430,22 @@ class ToolHead:
     def _flush_handler(self, eventtime):
         try:
             print_time = self.print_time
+            est_print_time = self.mcu.estimated_print_time(eventtime)
             buffer_time = print_time - self.mcu.estimated_print_time(eventtime)
             if buffer_time > self.buffer_time_low:
                 # Running normally - reschedule check
                 return eventtime + buffer_time - self.buffer_time_low
+
+            # DEBUG: detect low-buffer forced lookahead flush
+            logging.warning(
+                "LOW_BUFFER_FLUSH: eventtime=%.6f print_time=%.6f "
+                "est_print_time=%.6f buffer_time=%.6f low=%.6f "
+                "queue=%d state=%s",
+                eventtime, print_time, est_print_time,
+                buffer_time, self.buffer_time_low,
+                len(self.move_queue.queue),
+                self.special_queuing_state)
+            
             # Under ran low buffer mark - flush lookahead queue
             self.flush_step_generation()
             if print_time != self.print_time:
