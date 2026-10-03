@@ -214,15 +214,19 @@ class GCodeDispatch:
             try:
                 handler(gcmd)
             except self.error as e:
-                self._respond_error(str(e))
+                if not hasattr(e, "__caught"):
+                    setattr(e, "__caught", True)
+                    self._respond_error(str(e))
                 self.printer.send_event("gcode:command_error")
                 if not need_ack:
                     raise
-            except:
+            except Exception as e:
                 msg = 'Internal error on command:"%s"' % (cmd,)
                 logging.exception(msg)
                 self.printer.invoke_shutdown(msg)
-                self._respond_error(msg)
+                if not hasattr(e, "__caught"):
+                    setattr(e, "__caught", True)
+                    self._respond_error(msg)
                 if not need_ack:
                     raise
             gcmd.ack()
