@@ -10,6 +10,23 @@ It is not a new Klipper distribution and it is not meant to be installed. The
 Forge-X repository (`ff5m`) stays the place where the files are shipped from.
 This repository is the readable record of what is in them.
 
+## MCU sources and builds
+
+The separate [`mcu-v0.11` branch](https://github.com/DrA1ex/klipper-ad5m/tree/mcu-v0.11)
+contains the recovered eboard source history, based on the later v0.11-era
+upstream commit `c54d83c9` from 2023-03-15. It preserves the original eight
+eboard patches through `14c7b7d0` and adds an isolated build script with two
+profiles: the original N32G455 extruder board and the experimental
+STM32F103RET6 replacement requested in
+[Forge-X discussion #94](https://github.com/DrA1ex/ff5m/discussions/94).
+
+Use its [build guide](https://github.com/DrA1ex/klipper-ad5m/blob/mcu-v0.11/docs/AD5M_MCU_BUILD.md)
+for commands and compatibility limits, and its
+[source history](https://github.com/DrA1ex/klipper-ad5m/blob/mcu-v0.11/openwiki/ad5m-mcu-provenance.md)
+for the original upstream patches. The STM32 profile is checked offline and
+does not claim a complete replacement of proprietary mainboard sensor
+firmware. Do not install that branch's host tree over Forge-X.
+
 ## The history
 
 ```text

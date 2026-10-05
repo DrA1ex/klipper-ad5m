@@ -1,5 +1,12 @@
 Welcome to the Klipper project!
 
+For AD5M MCU sources and firmware builds, use the
+[`mcu-v0.11` branch](https://github.com/DrA1ex/klipper-ad5m/tree/mcu-v0.11)
+and its [build guide](https://github.com/DrA1ex/klipper-ad5m/blob/mcu-v0.11/docs/AD5M_MCU_BUILD.md).
+It includes the recovered N32G455 extruder-board patches, an experimental
+STM32F103RET6 build profile, and a local build script. This `main` branch
+records the Forge-X host changes described in [AD5M.md](AD5M.md).
+
 [![Klipper](docs/img/klipper-logo-small.png)](https://www.klipper3d.org/)
 
 https://www.klipper3d.org/
