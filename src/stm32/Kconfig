@@ -1,4 +1,8 @@
 # Kconfig settings for STM32 processors
+#
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 
 if MACH_STM32
 
@@ -111,6 +115,11 @@ config MACH_STM32F103x6
     depends on LOW_LEVEL_OPTIONS && MACH_STM32F103
     bool "Only 10KiB of RAM (for rare stm32f103x6 variant)"
 
+config MACH_STM32F103xE
+    depends on LOW_LEVEL_OPTIONS && MACH_STM32F103 && !MACH_STM32F103x6
+    bool "512KiB flash and 64KiB RAM (STM32F103xE)"
+    default n
+
 config MACH_STM32F0
     bool
 config MACH_STM32F1
@@ -199,6 +208,7 @@ config CLOCK_FREQ
 
 config FLASH_SIZE
     hex
+    default 0x80000 if MACH_STM32F103xE
     default 0x4000 if MACH_STM32F031
     default 0x8000 if MACH_STM32F042
     default 0x20000 if MACH_STM32F070 || MACH_STM32F072
@@ -220,6 +230,7 @@ config RAM_START
 
 config RAM_SIZE
     hex
+    default 0x10000 if MACH_STM32F103xE
     default 0x1000 if MACH_STM32F031
     default 0x1800 if MACH_STM32F042
     default 0x4000 if MACH_STM32F070 || MACH_STM32F072
