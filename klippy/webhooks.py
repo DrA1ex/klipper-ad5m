@@ -1,12 +1,28 @@
 # Klippy WebHooks registration and server connection
 #
 # Copyright (C) 2020 Eric Callahan <arksine.code@gmail.com>
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license
+#
+# Changes:
+# - Preserve the stock screen's accepted API socket and output subscription
+#   across in-process RESTART, FIRMWARE_RESTART, and SAVE_CONFIG reloads.
+# - Transfer only raw transport state; each reload creates new client objects.
 import logging, socket, os, sys, errno, json, collections
 import gcode
 
 REQUEST_LOG_SIZE = 20
+
+# The module survives Printer/Reactors. Never retain their objects here.
+StockUIConnection = collections.namedtuple('StockUIConnection', (
+    'address', 'sock', 'partial_data', 'send_buffer', 'pending_requests',
+    'output_template'))
+_stock_ui_connections = collections.deque()
+
+def _close_stock_ui_connections():
+    while _stock_ui_connections:
+        _stock_ui_connections.popleft().sock.close()
 
 # Json decodes strings as unicode types in Python 2.x.  This doesn't
 # play well with some parts of Klipper (particuarly displays), so we
@@ -114,13 +130,19 @@ class ServerSocket:
         if not server_address or is_fileinput:
             # Do not enable server
             return
-        self._remove_socket_file(server_address)
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.setblocking(0)
-        self.sock.bind(server_address)
-        self.sock.listen(1)
-        self.fd_handle = self.reactor.register_fd(
-            self.sock.fileno(), self._handle_accept)
+        try:
+            self._remove_socket_file(server_address)
+            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.sock.setblocking(0)
+            self.sock.bind(server_address)
+            self.sock.listen(1)
+            self.fd_handle = self.reactor.register_fd(
+                self.sock.fileno(), self._handle_accept)
+        except Exception:
+            if self.sock is not None:
+                self.sock.close()
+            _close_stock_ui_connections()
+            raise
         printer.register_event_handler(
             'klippy:disconnect', self._handle_disconnect)
         printer.register_event_handler(
@@ -136,14 +158,55 @@ class ServerSocket:
         self.clients[client.uid] = client
 
     def _handle_disconnect(self):
+        # run_result is set by Printer.request_exit before disconnect handlers.
+        preserve = self.printer.run_result in ('restart', 'firmware_restart')
         for client in list(self.clients.values()):
-            client.close()
+            if preserve and client.output_template is not None:
+                try:
+                    _stock_ui_connections.append(client.detach())
+                except Exception:
+                    logging.exception('webhooks: Unable to preserve stock UI')
+                    client.close()
+            else:
+                client.close()
         if self.sock is not None:
             self.reactor.unregister_fd(self.fd_handle)
+            self.fd_handle = None
             try:
                 self.sock.close()
             except socket.error:
                 pass
+
+    def restore_stock_ui_connections(self, gcode_helper):
+        start_args = self.printer.get_start_args()
+        while _stock_ui_connections:
+            saved = _stock_ui_connections.popleft()
+            if (self.sock is None or saved.address != start_args.get('apiserver')
+                or start_args.get('start_reason') not in
+                    ('restart', 'firmware_restart')):
+                saved.sock.close()
+                continue
+            client = None
+            try:
+                client = ClientConnection(self, saved.sock)
+                self.clients[client.uid] = client
+                client.partial_data = saved.partial_data
+                client.send_buffer = saved.send_buffer
+                client.pending_requests.extend(saved.pending_requests)
+                gcode_helper.subscribe_output(client, saved.output_template)
+                if client.send_buffer:
+                    client._do_send()
+                if client.is_closed():
+                    continue
+                for _ in client.pending_requests:
+                    self.reactor.register_callback(client._process_pending_request)
+                logging.info('webhooks: Restored stock UI connection %s', client.uid)
+            except Exception:
+                logging.exception('webhooks: Unable to restore stock UI')
+                if client is not None:
+                    gcode_helper.clients.pop(client, None)
+                    client.close()
+                saved.sock.close()
 
     def _handle_shutdown(self):
         for client in self.clients.values():
@@ -180,13 +243,17 @@ class ClientConnection:
         self.server = server
         self.uid = id(self)
         self.sock = sock
-        self.fd_handle = self.reactor.register_fd(
-            self.sock.fileno(), self.process_received, self._do_send)
+        self.fd_handle = None
         self.partial_data = self.send_buffer = b""
+        self.pending_requests = collections.deque()
+        self.active_requests = collections.OrderedDict()
+        self.output_template = None
         self.is_blocking = False
         self.blocking_count = 0
         self.set_client_info("?", "New connection")
         self.request_log = collections.deque([], REQUEST_LOG_SIZE)
+        self.fd_handle = self.reactor.register_fd(
+            self.sock.fileno(), self.process_received, self._do_send)
 
     def dump_request_log(self):
         out = []
@@ -222,6 +289,36 @@ class ClientConnection:
     def is_closed(self):
         return self.fd_handle is None
 
+    def detach(self):
+        # A status query can be suspended in complete.wait() when the old
+        # reactor ends. Replay this read against the new Printer; never replay
+        # an action whose effects may already have happened.
+        queries = []
+        for request, raw in list(self.active_requests.items()):
+            if request.get_method() == 'objects/query':
+                queries.append(raw)
+                continue
+            request.set_error(WebRequestError(
+                'Klipper restarted before request completed'))
+            result = request.finish()
+            if result is not None:
+                self.send(result)
+        if queries:
+            logging.info('webhooks: Carrying %d interrupted stock UI queries', len(queries))
+        saved = StockUIConnection(
+            self.printer.get_start_args().get('apiserver'), self.sock,
+            self.partial_data, self.send_buffer, tuple(queries) + tuple(self.pending_requests),
+            dict(self.output_template))
+        self.set_client_info(None, 'Detached for stock UI reload')
+        self.reactor.unregister_fd(self.fd_handle)
+        self.fd_handle = None
+        self.sock = None
+        self.partial_data = self.send_buffer = b""
+        self.pending_requests.clear()
+        self.active_requests.clear()
+        self.server.pop_client(self.uid)
+        return saved
+
     def process_received(self, eventtime):
         try:
             data = self.sock.recv(4096)
@@ -241,14 +338,23 @@ class ClientConnection:
         self.partial_data = requests.pop()
         for req in requests:
             self.request_log.append((eventtime, req))
-            try:
-                web_request = WebRequest(self, req)
-            except Exception:
-                logging.exception("webhooks: Error decoding Server Request %s"
-                                  % (req))
-                continue
-            self.reactor.register_callback(
-                lambda e, s=self, wr=web_request: s._process_request(wr))
+            self.pending_requests.append(req)
+            self.reactor.register_callback(self._process_pending_request)
+
+    def _process_pending_request(self, eventtime):
+        if self.is_closed() or not self.pending_requests:
+            return
+        req = self.pending_requests.popleft()
+        try:
+            web_request = WebRequest(self, req)
+        except Exception:
+            logging.exception("webhooks: Error decoding Server Request %s" % (req))
+            return
+        self.active_requests[web_request] = req
+        try:
+            self._process_request(web_request)
+        finally:
+            self.active_requests.pop(web_request, None)
 
     def _process_request(self, web_request):
         try:
@@ -438,10 +544,13 @@ class GCodeHelper:
     def _handle_subscribe_output(self, web_request):
         cconn = web_request.get_client_connection()
         template = web_request.get_dict('response_template', {})
-        self.clients[cconn] = template
+        self.subscribe_output(cconn, template)
+    def subscribe_output(self, cconn, template):
         if not self.is_output_registered:
             self.gcode.register_output_handler(self._output_callback)
             self.is_output_registered = True
+        self.clients[cconn] = template
+        cconn.output_template = template if template.get('key') == 99999999 else None
 
 SUBSCRIPTION_REFRESH_TIME = .25
 
@@ -539,5 +648,6 @@ class QueryStatusHelper:
 
 def add_early_printer_objects(printer):
     printer.add_object('webhooks', WebHooks(printer))
-    GCodeHelper(printer)
+    gcode_helper = GCodeHelper(printer)
     QueryStatusHelper(printer)
+    printer.lookup_object('webhooks').get_connection().restore_stock_ui_connections(gcode_helper)
