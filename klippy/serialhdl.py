@@ -112,6 +112,15 @@ class SerialReader:
             self.ffi_lib.serialqueue_set_wire_frequency(self.serialqueue,
                                                         wire_freq)
         receive_window = msgparser.get_constant_int('RECEIVE_WINDOW', None)
+        if receive_window is None and serial_fd_type == b'u':
+            # The AD5M mainboard (2023-08-31) and eboard (2023-10-12)
+            # firmwares both have 192-byte UART RX buffers. Verified in
+            # their serial_rx_byte() bounds checks (index <= 0xbf).
+            receive_window = 192
+            logging.info(
+                "%sMCU did not report RECEIVE_WINDOW; using verified "
+                "AD5M UART receive window %d", self.warn_prefix,
+                receive_window)
         if receive_window is not None:
             self.ffi_lib.serialqueue_set_receive_window(
                 self.serialqueue, receive_window)
