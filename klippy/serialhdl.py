@@ -100,6 +100,14 @@ class SerialReader:
             wire_freq = msgparser.get_constant_float('CANBUS_FREQUENCY', None)
         else:
             wire_freq = msgparser.get_constant_float('SERIAL_BAUD', None)
+        if wire_freq is None and serial_fd_type == b'u':
+            # Some MCU firmware omits SERIAL_BAUD from its identify data.
+            # Use the baud rate configured for this UART connection.
+            wire_freq = getattr(serial_dev, 'baudrate', None)
+            if wire_freq is not None:
+                logging.info(
+                    "%sMCU did not report SERIAL_BAUD; using configured "
+                    "UART baud rate %d", self.warn_prefix, wire_freq)
         if wire_freq is not None:
             self.ffi_lib.serialqueue_set_wire_frequency(self.serialqueue,
                                                         wire_freq)
