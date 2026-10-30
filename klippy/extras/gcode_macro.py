@@ -1,10 +1,57 @@
 # Add ability to define custom g-code macros
 #
 # Copyright (C) 2018-2021  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import traceback, logging, ast, copy
+import traceback, logging, ast, copy, os, sys, hashlib, pickle, types
 import jinja2
+
+
+# RESTART reuses imported modules. Bind the namespace to this loaded version,
+# even if a replacement file is staged before the Python process restarts.
+try:
+    with open(__file__, 'rb') as source:
+        TEMPLATE_CACHE_OWNER = hashlib.sha256(source.read()).hexdigest()
+except OSError:
+    TEMPLATE_CACHE_OWNER = None
+
+
+# Stored outside Moonraker's registered file roots; Klipper runs on the host.
+TEMPLATE_CACHE_DIRECTORY = '/root/.forge-x/cache/gcode_macro'
+
+
+class TemplateBytecodeCache(jinja2.FileSystemBytecodeCache):
+    # A derivative cache must never make a valid printer config unloadable.
+    def load_bytecode(self, bucket):
+        try:
+            super().load_bytecode(bucket)
+        except (OSError, EOFError, ValueError, pickle.UnpicklingError):
+            bucket.reset()
+            logging.warning("Unable to read G-code template cache; recompiling")
+
+    def dump_bytecode(self, bucket):
+        try:
+            super().dump_bytecode(bucket)
+        except OSError:
+            logging.warning("Unable to write G-code template cache")
+
+
+def template_cache(printer):
+    if TEMPLATE_CACHE_OWNER is None:
+        logging.warning("G-code template cache owner unavailable; compiling normally")
+        return None
+    directory = TEMPLATE_CACHE_DIRECTORY
+    try:
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+    except OSError:
+        logging.warning("G-code template cache unavailable; compiling normally")
+        return None
+
+    # Jinja checks the template source and Python bytecode format itself.
+    # Namespace the compiler and our environment policy without manual refresh.
+    namespace = '%s-%s-%s' % (sys.implementation.cache_tag, jinja2.__version__, TEMPLATE_CACHE_OWNER)
+    return TemplateBytecodeCache(directory, pattern=namespace + '-%s.cache')
 
 
 ######################################################################
@@ -48,7 +95,46 @@ class TemplateWrapper:
         gcode_macro = self.printer.lookup_object('gcode_macro')
         self.create_template_context = gcode_macro.create_template_context
         try:
-            self.template = env.from_string(script)
+            cache = env.bytecode_cache
+            if cache is None:
+                self.template = env.from_string(script)
+            else:
+                # Cache contents are optional. Any failure reading or loading
+                # cached code must fall back to compiling the source template.
+                try:
+                    bucket = cache.get_bucket(env, name, None, script)
+                except Exception:
+                    logging.warning(
+                        "Unable to load G-code template cache for '%s'; "
+                        "recompiling", name, exc_info=True)
+                    bucket = jinja2.bccache.Bucket(
+                        env, cache.get_cache_key(name, None),
+                        cache.get_source_checksum(script))
+
+                if bucket.code is not None:
+                    try:
+                        if not isinstance(bucket.code, types.CodeType):
+                            raise TypeError("Cached template is not Python code")
+                        self.template = env.template_class.from_code(
+                            env, bucket.code, env.make_globals(None), None)
+                    except Exception:
+                        logging.warning(
+                            "Invalid G-code template cache for '%s'; "
+                            "recompiling", name, exc_info=True)
+                        bucket.reset()
+
+                if bucket.code is None:
+                    code = env.compile(script)
+                    # Only write bytecode that can instantiate a valid template.
+                    self.template = env.template_class.from_code(
+                        env, code, env.make_globals(None), None)
+                    bucket.code = code
+                    try:
+                        cache.set_bucket(bucket)
+                    except Exception:
+                        logging.warning(
+                            "Unable to save G-code template cache for '%s'",
+                            name, exc_info=True)
         except Exception as e:
             msg = "Error loading template '%s': %s" % (
                  name, traceback.format_exception_only(type(e), e)[-1])
@@ -72,6 +158,7 @@ class PrinterGCodeMacro:
     def __init__(self, config):
         self.printer = config.get_printer()
         self.env = jinja2.Environment('{%', '%}', '{', '}')
+        self.env.bytecode_cache = template_cache(self.printer)
     def load_template(self, config, option, default=None):
         name = "%s:%s" % (config.get_name(), option)
         if default is None:
