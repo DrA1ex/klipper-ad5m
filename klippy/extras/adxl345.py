@@ -2,8 +2,10 @@
 #
 # Copyright (C) 2020-2021  Kevin O'Connor <kevin@koconnor.net>
 #
+# Copyright (C) 2026, Alexander K <https://github.com/drA1ex>
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import logging, time, collections, threading, multiprocessing, os
+import logging, time, collections, threading, os
 from . import bus, motion_report
 
 # ADXL345 registers
@@ -84,6 +86,10 @@ class AccelQueryHelper:
         del samples[count:]
         return self.samples
     def write_to_file(self, filename):
+        # Delay multiprocessing until sample export. ARMv7/Python 3.7 tests
+        # measured ~706 KiB extra PSS for importing it (10-run mean).
+        # This is import overhead, not measured whole-Klippy savings.
+        import multiprocessing
         def write_impl():
             try:
                 # Try to re-nice writing process
